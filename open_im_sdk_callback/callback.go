@@ -50,8 +50,17 @@ type OnConversationListener interface {
 type OnAdvancedMsgListener interface {
 	OnRecvNewMessage(message string)
 	OnRecvC2CReadReceipt(msgReceiptList string)
-	OnRecvMessageRevoked(msgId string)
+	OnRecvGroupReadReceipt(groupMsgReceiptList string)
+	OnRecvMessageRevoked(msgID string)
 }
 type OnUserListener interface {
 	OnSelfInfoUpdated(userInfo string)
+}
+
+type OnOrganizationListener interface {
+	OnOrganizationUpdated()
+}
+
+type OnWorkMomentsListener interface {
+	OnRecvNewNotification()
 }

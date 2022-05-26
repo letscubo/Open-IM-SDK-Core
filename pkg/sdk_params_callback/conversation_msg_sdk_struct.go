@@ -22,16 +22,21 @@ type GetMultipleConversationParams []string
 type GetMultipleConversationCallback []*db.LocalConversation
 
 const DeleteConversationCallback = constant.SuccessCallbackDefault
+const DeleteAllConversationFromLocalCallback = constant.SuccessCallbackDefault
 
 const SetConversationDraftCallback = constant.SuccessCallbackDefault
+const ResetConversationGroupAtTypeCallback = constant.SuccessCallbackDefault
 
 const PinConversationDraftCallback = constant.SuccessCallbackDefault
 
-const SetConversationStatusCallback = constant.SuccessCallbackDefault
+const SetConversationMessageOptCallback = constant.SuccessCallbackDefault
+
+const SetConversationPrivateChatOptCallback = constant.SuccessCallbackDefault
 
 type GetHistoryMessageListParams struct {
 	UserID           string `json:"userID"`
 	GroupID          string `json:"groupID"`
+	ConversationID   string `json:"conversationID"`
 	StartClientMsgID string `json:"startClientMsgID"`
 	Count            int    `json:"count"`
 }
@@ -47,15 +52,18 @@ type MarkC2CMessageAsReadParams []string
 
 const MarkC2CMessageAsReadCallback = constant.SuccessCallbackDefault
 
-const MarkGroupMessageHasRead = constant.SuccessCallbackDefault
+const MarkGroupMessageHasReadCallback = constant.SuccessCallbackDefault
+
+type MarkMessageAsReadByConIDParams []string
+
+const MarkMessageAsReadByConIDCallback = constant.SuccessCallbackDefault
 
 type SetConversationStatusParams struct {
 	UserId string `json:"userID" validate:"required"`
 	Status int    `json:"status" validate:"required"`
 }
 type SearchLocalMessagesParams struct {
-	SourceID             string   `json:"sourceID"`
-	SessionType          int      `json:"sessionType"`
+	ConversationID       string   `json:"conversationID"`
 	KeywordList          []string `json:"keywordList"`
 	KeywordListMatchType int      `json:"keywordListMatchType"`
 	SenderUserIDList     []string `json:"senderUserIDList"`
@@ -70,7 +78,10 @@ type SearchLocalMessagesCallback struct {
 	SearchResultItems []*SearchByConversationResult `json:"searchResultItems"`
 }
 type SearchByConversationResult struct {
-	ConversationID string                  `json:"conversationID"`
-	MessageCount   int                     `json:"messageCount"`
-	MessageList    []*sdk_struct.MsgStruct `json:"messageList"`
+	ConversationID   string                  `json:"conversationID"`
+	ConversationType int32                   `json:"conversationType"`
+	ShowName         string                  `json:"showName"`
+	FaceURL          string                  `json:"faceURL"`
+	MessageCount     int                     `json:"messageCount"`
+	MessageList      []*sdk_struct.MsgStruct `json:"messageList"`
 }

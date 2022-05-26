@@ -11,6 +11,12 @@ func (u *LoginMgr) Login(callback open_im_sdk_callback.Base, userID, token strin
 	}()
 }
 
+func (u *LoginMgr) WakeUp(callback open_im_sdk_callback.Base, operationID string) {
+	go func() {
+		u.wakeUp(callback, operationID)
+	}()
+}
+
 func (u *LoginMgr) Logout(callback open_im_sdk_callback.Base, operationID string) {
 	go func() {
 		u.logout(callback, operationID)
@@ -30,9 +36,12 @@ func (u *LoginMgr) UploadImage(callback open_im_sdk_callback.Base, filePath stri
 	return url
 }
 
-//func InitOnce(config *utils.IMConfig) bool {
-//	constant.SvrConf = *config
-//	initUserRouter()
-//	open_im_sdk.initAddr()
-//	return true
-//}
+func (u *LoginMgr) UploadFile(callback open_im_sdk_callback.SendMsgCallBack, filePath, operationID string) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		u.uploadFile(callback, filePath, operationID)
+		wg.Done()
+	}()
+	wg.Wait()
+}

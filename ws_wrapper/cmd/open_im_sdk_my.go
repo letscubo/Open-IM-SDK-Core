@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+<<<<<<< HEAD
 	APIADDR := "http://172.20.10.5:10000"
 	WSADDR := "ws://172.20.10.5:17778"
 
@@ -27,10 +28,20 @@ func main() {
 	openIMApiAddress := flag.String("api_address", APIADDR, "openIM api address")
 	openIMWsAddress := flag.String("ws_address", WSADDR, "openIM ws address")
 
+=======
+	var sdkWsPort, openIMApiPort, openIMWsPort *int
+	//var openIMWsAddress, openIMApiAddress *string
+	APIADDR := "http://43.128.5.63:10000"
+	WSADDR := "ws://43.128.5.63:17778"
+	sdkWsPort = flag.Int("sdk_ws_port", 30000, "openIM ws listening port")
+	//openIMApiAddress = flag.String("openIMApiAddress", "", "openIM api listening port")
+	//openIMWsAddress = flag.String("openIMWsAddress", "", "openIM ws listening port")
+>>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
 	flag.Parse()
 	sysType := runtime.GOOS
 	switch sysType {
 	case "darwin":
+<<<<<<< HEAD
 		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: *openIMApiAddress,
 			WsAddr: *openIMWsAddress, Platform: utils.OSXPlatformID, DataDir: *sqliteDir})
 	case "linux":
@@ -39,6 +50,18 @@ func main() {
 	case "windows":
 		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: *openIMApiAddress,
 			WsAddr: *openIMWsAddress, Platform: utils.WebPlatformID, DataDir: *sqliteDir})
+=======
+		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: APIADDR,
+			WsAddr: WSADDR, Platform: utils.WebPlatformID, DataDir: "./"})
+	case "linux":
+		//sdkDBDir:= flag.String("sdk_db_dir","","openIMSDK initialization path")
+		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: "http://" + utils.ServerIP + ":" + utils.IntToString(*openIMApiPort),
+			WsAddr: "ws://" + utils.ServerIP + ":" + utils.IntToString(*openIMWsPort), Platform: utils.WebPlatformID, DataDir: "../db/sdk/"})
+
+	case "windows":
+		ws_local_server.InitServer(&sdk_struct.IMConfig{ApiAddr: APIADDR,
+			WsAddr: WSADDR, Platform: utils.WindowsPlatformID, DataDir: "./", LogLevel: 6})
+>>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
 	default:
 		fmt.Println("this os not support", sysType)
 	}
@@ -46,10 +69,21 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	fmt.Println("ws server is starting")
+<<<<<<< HEAD
 	ws_local_server.WS.OnInit(*sdkWsPort, *sdkWsIp)
 	if ws_local_server.WS.Run()!=nil {
 		os.Exit(-10);
 	}
+=======
+	ws_local_server.WS.OnInit(*sdkWsPort)
+	//go func() {
+	//	log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	//}()
+
+	ws_local_server.WS.Run()
+
+	fmt.Println("run success")
+>>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
 	wg.Wait()
 
 }

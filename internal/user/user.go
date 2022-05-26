@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/google/go-cmp/cmp"
 	comm "open_im_sdk/internal/common"
-
 	//"github.com/mitchellh/mapstructure"
 	ws "open_im_sdk/internal/interaction"
 	"open_im_sdk/open_im_sdk_callback"
@@ -23,6 +22,15 @@ type User struct {
 	p           *ws.PostApi
 	loginUserID string
 	listener    open_im_sdk_callback.OnUserListener
+	loginTime   int64
+}
+
+func (u *User) LoginTime() int64 {
+	return u.loginTime
+}
+
+func (u *User) SetLoginTime(loginTime int64) {
+	u.loginTime = loginTime
 }
 
 func (u *User) SetListener(listener open_im_sdk_callback.OnUserListener) {
@@ -40,6 +48,12 @@ func (u *User) DoNotification(msg *api.MsgData) {
 		log.Error(operationID, "listener == nil")
 		return
 	}
+
+	if msg.SendTime < u.loginTime {
+		log.Warn(operationID, "ignore notification ", msg.ClientMsgID, msg.ServerMsgID, msg.Seq, msg.ContentType)
+		return
+	}
+
 	go func() {
 		switch msg.ContentType {
 		case constant.UserInfoUpdatedNotification:
@@ -60,6 +74,10 @@ func (u *User) userInfoUpdatedNotification(msg *api.MsgData, operationID string)
 	if detail.UserID == u.loginUserID {
 		log.Info(operationID, "detail.UserID == u.loginUserID, SyncLoginUserInfo", detail.UserID)
 		u.SyncLoginUserInfo(operationID)
+		user, err := u.GetLoginUser()
+		if err != nil {
+			go u.updateMsgSenderInfo(user.Nickname, user.FaceURL, operationID)
+		}
 	} else {
 		log.Info(operationID, "detail.UserID != u.loginUserID, do nothing", detail.UserID, u.loginUserID)
 	}
@@ -69,13 +87,13 @@ func (u *User) SyncLoginUserInfo(operationID string) {
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "args: ")
 	svr, err := u.GetSelfUserInfoFromSvr(operationID)
 	if err != nil {
-		log.Error(operationID, "GetSelfUserInfoFromSvr failed")
+		log.Error(operationID, "GetSelfUserInfoFromSvr failed", err.Error())
 		return
 	}
 	onServer := common.TransferToLocalUserInfo(svr)
 	onLocal, err := u.GetLoginUser()
 	if err != nil {
-		log.Error(operationID, "GetLoginUser failed", err.Error())
+		log.Warn(operationID, "GetLoginUser failed", err.Error())
 		onLocal = &db.LocalUser{}
 	}
 	if !cmp.Equal(onServer, onLocal) {
@@ -100,10 +118,6 @@ func (u *User) SyncLoginUserInfo(operationID string) {
 	}
 }
 
-//func (u *User) getUsersInfo(callback open_im_sdk_callback.Base, UserIDList sdk.GetUsersInfoParam, operationID string) sdk.GetUsersInfoCallback{
-//	u.GetFriendInfoByFriendUserID()
-//	return nil
-//}
 func (u *User) GetUsersInfoFromSvr(callback open_im_sdk_callback.Base, UserIDList sdk.GetUsersInfoParam, operationID string) []*api.PublicUserInfo {
 	apiReq := api.GetUsersInfoReq{}
 	apiReq.OperationID = operationID
@@ -113,11 +127,27 @@ func (u *User) GetUsersInfoFromSvr(callback open_im_sdk_callback.Base, UserIDLis
 	return apiResp.UserInfoList
 }
 
+func (u *User) GetUsersInfoFromSvrNoCallback(UserIDList sdk.GetUsersInfoParam, operationID string) ([]*api.PublicUserInfo, error) {
+	apiReq := api.GetUsersInfoReq{}
+	apiReq.OperationID = operationID
+	apiReq.UserIDList = UserIDList
+	apiResp := api.GetUsersInfoResp{}
+	err := u.p.PostReturn(constant.GetUsersInfoRouter, apiReq, &apiResp.UserInfoList)
+	return apiResp.UserInfoList, err
+}
+
+func (u *User) GetUsersInfoFromCacheSvr(UserIDList sdk.GetUsersInfoParam, operationID string) ([]*api.PublicUserInfo, error) {
+	apiReq := api.GetUsersInfoReq{}
+	apiReq.OperationID = operationID
+	apiReq.UserIDList = UserIDList
+	apiResp := api.GetUsersInfoResp{}
+	err := u.p.PostReturn(constant.GetUsersInfoFromCacheRouter, apiReq, &apiResp.UserInfoList)
+	return apiResp.UserInfoList, err
+}
+
 func (u *User) getSelfUserInfo(callback open_im_sdk_callback.Base, operationID string) sdk.GetSelfUserInfoCallback {
 	userInfo, err := u.GetLoginUser()
-	if err != nil {
-		callback.OnError(constant.ErrDB.ErrCode, constant.ErrDB.ErrMsg)
-	}
+	common.CheckDBErrCallback(callback, err, operationID)
 	return userInfo
 }
 
@@ -147,4 +177,16 @@ func (u *User) DoUserNotification(msg *api.MsgData) {
 	if msg.SendID == u.loginUserID && msg.SenderPlatformID == sdk_struct.SvrConf.Platform {
 		return
 	}
+}
+
+func (u *User) ParseTokenFromSvr(operationID string) (uint32, error) {
+	apiReq := api.ParseTokenReq{}
+	apiReq.OperationID = operationID
+	apiResp := api.ParseTokenResp{}
+	err := u.p.PostReturn(constant.ParseTokenRouter, apiReq, &apiResp.ExpireTime)
+	if err != nil {
+		return 0, utils.Wrap(err, apiReq.OperationID)
+	}
+	log.Info(operationID, "apiResp.ExpireTime.ExpireTimeSeconds ", apiResp.ExpireTime)
+	return apiResp.ExpireTime.ExpireTimeSeconds, nil
 }

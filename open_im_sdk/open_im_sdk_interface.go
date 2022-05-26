@@ -11,6 +11,7 @@ import (
 	"open_im_sdk/pkg/log"
 	"open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
+	"strings"
 )
 
 /*
@@ -35,13 +36,26 @@ func SdkVersion() string {
 	return constant.SdkVersion + constant.BigVersion + constant.UpdateVersion
 }
 
+func SetHeartbeatInterval(heartbeatInterval int) {
+	constant.HeartbeatInterval = heartbeatInterval
+}
+
 func InitSDK(listener open_im_sdk_callback.OnConnListener, operationID string, config string) bool {
 	if err := json.Unmarshal([]byte(config), &sdk_struct.SvrConf); err != nil {
 		log.Error(operationID, "Unmarshal failed ", err.Error(), config)
 		return false
 	}
-	log.Info(operationID, "config ", config, sdk_struct.SvrConf)
+	if !strings.Contains(sdk_struct.SvrConf.ApiAddr, "http") {
+		log.Error(operationID, "api is http protocol", sdk_struct.SvrConf.ApiAddr)
+		return false
+	}
+	if !strings.Contains(sdk_struct.SvrConf.WsAddr, "ws") {
+		log.Error(operationID, "ws is ws protocol", sdk_struct.SvrConf.ApiAddr)
+		return false
+	}
+
 	log.NewPrivateLog("", sdk_struct.SvrConf.LogLevel)
+	log.Info(operationID, "config ", config, sdk_struct.SvrConf)
 	log.NewInfo(operationID, utils.GetSelfFuncName(), config, SdkVersion())
 	if listener == nil || config == "" {
 		log.Error(operationID, "listener or config is nil")
@@ -52,12 +66,13 @@ func InitSDK(listener open_im_sdk_callback.OnConnListener, operationID string, c
 		userForSDK.Logout(nil, utils.OperationIDGenerator())
 	}
 	userForSDK = new(login.LoginMgr)
+
 	return userForSDK.InitSDK(sdk_struct.SvrConf, listener, operationID)
 }
 
 func Login(callback open_im_sdk_callback.Base, operationID string, userID, token string) {
 	if callback == nil {
-		log.Error("callback is nil")
+		log.Error(operationID, "callback is nil")
 		return
 	}
 	if userForSDK == nil {
@@ -67,8 +82,26 @@ func Login(callback open_im_sdk_callback.Base, operationID string, userID, token
 	userForSDK.Login(callback, userID, token, operationID)
 }
 
+func WakeUp(callback open_im_sdk_callback.Base, operationID string) {
+	if callback == nil {
+		log.Error("callback is nil")
+		return
+	}
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.WakeUp(callback, operationID)
+
+}
+
 func UploadImage(callback open_im_sdk_callback.Base, operationID string, filePath string, token, obj string) string {
 	return userForSDK.UploadImage(callback, filePath, token, obj, operationID)
+}
+
+func UploadFile(callback open_im_sdk_callback.SendMsgCallBack, operationID string, filePath string) {
+	userForSDK.UploadFile(callback, filePath, operationID)
 }
 
 func Logout(callback open_im_sdk_callback.Base, operationID string) {
@@ -86,10 +119,22 @@ func Logout(callback open_im_sdk_callback.Base, operationID string) {
 }
 
 func GetLoginStatus() int32 {
+	if userForSDK == nil {
+		log.Error("", "userForSDK == nil")
+		return -1
+	}
+	if userForSDK.Ws() == nil {
+		log.Error("", "userForSDK.Ws() == nil")
+		return -2
+	}
 	return userForSDK.GetLoginStatus()
 }
 
 func GetLoginUser() string {
+	if userForSDK == nil {
+		log.Error("", "userForSDK == nil")
+		return ""
+	}
 	return userForSDK.GetLoginUser()
 }
 
@@ -127,8 +172,15 @@ func SetGroupListener(callback open_im_sdk_callback.OnGroupListener) {
 		log.Error("callback or userForSDK is nil")
 		return
 	}
-
 	userForSDK.SetGroupListener(callback)
+}
+
+func SetOrganizationListener(callback open_im_sdk_callback.OnOrganizationListener) {
+	if callback == nil || userForSDK == nil {
+		log.Error("callback or userForSDK is nil")
+		return
+	}
+	userForSDK.SetOrganizationListener(callback)
 }
 
 func CreateGroup(callback open_im_sdk_callback.Base, operationID string, groupBaseInfo string, memberList string) {
@@ -166,6 +218,33 @@ func QuitGroup(callback open_im_sdk_callback.Base, operationID string, groupID s
 	userForSDK.Group().QuitGroup(callback, groupID, operationID)
 }
 
+func DismissGroup(callback open_im_sdk_callback.Base, operationID string, groupID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().DismissGroup(callback, groupID, operationID)
+}
+
+func ChangeGroupMute(callback open_im_sdk_callback.Base, operationID string, groupID string, isMute bool) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().ChangeGroupMute(callback, groupID, isMute, operationID)
+}
+
+func ChangeGroupMemberMute(callback open_im_sdk_callback.Base, operationID string, groupID, userID string, mutedSeconds int) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().ChangeGroupMemberMute(callback, groupID, userID, uint32(mutedSeconds), operationID)
+}
+
 func GetJoinedGroupList(callback open_im_sdk_callback.Base, operationID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -182,6 +261,14 @@ func GetGroupsInfo(callback open_im_sdk_callback.Base, operationID string, group
 		return
 	}
 	userForSDK.Group().GetGroupsInfo(callback, groupIDList, operationID)
+}
+func SearchGroups(callback open_im_sdk_callback.Base, operationID string, searchParam string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().SearchGroups(callback, searchParam, operationID)
 }
 
 func SetGroupInfo(callback open_im_sdk_callback.Base, operationID string, groupID string, groupInfo string) {
@@ -274,6 +361,15 @@ func RefuseGroupApplication(callback open_im_sdk_callback.Base, operationID stri
 	userForSDK.Group().RefuseGroupApplication(callback, groupID, fromUserID, handleMsg, operationID)
 }
 
+func SetGroupMemberNickname(callback open_im_sdk_callback.Base, operationID string, groupID, userID, groupMemberNickname string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Group().SetGroupMemberNickname(callback, groupID, userID, groupMemberNickname, operationID)
+}
+
 ////////////////////////////friend/////////////////////////////////////
 
 func GetDesignatedFriendsInfo(callback open_im_sdk_callback.Base, operationID string, userIDList string) {
@@ -293,7 +389,14 @@ func GetFriendList(callback open_im_sdk_callback.Base, operationID string) {
 	}
 	userForSDK.Friend().GetFriendList(callback, operationID)
 }
-
+func SearchFriends(callback open_im_sdk_callback.Base, operationID string, searchParam string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Friend().SearchFriends(callback, searchParam, operationID)
+}
 func CheckFriend(callback open_im_sdk_callback.Base, operationID string, userIDList string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -406,6 +509,7 @@ func GetAllConversationList(callback open_im_sdk_callback.Base, operationID stri
 	}
 	userForSDK.Conversation().GetAllConversationList(callback, operationID)
 }
+
 func GetConversationListSplit(callback open_im_sdk_callback.Base, operationID string, offset, count int) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -413,6 +517,42 @@ func GetConversationListSplit(callback open_im_sdk_callback.Base, operationID st
 		return
 	}
 	userForSDK.Conversation().GetConversationListSplit(callback, offset, count, operationID)
+}
+
+func GetOneConversation(callback open_im_sdk_callback.Base, operationID string, sessionType int, sourceID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().GetOneConversation(callback, int32(sessionType), sourceID, operationID)
+}
+
+func GetMultipleConversation(callback open_im_sdk_callback.Base, operationID string, conversationIDList string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().GetMultipleConversation(callback, conversationIDList, operationID)
+}
+
+func SetOneConversationPrivateChat(callback open_im_sdk_callback.Base, operationID, conversationID string, isPrivate bool) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().SetOneConversationPrivateChat(callback, conversationID, isPrivate, operationID)
+}
+
+func SetOneConversationRecvMessageOpt(callback open_im_sdk_callback.Base, operationID, conversationID string, opt int) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().SetOneConversationRecvMessageOpt(callback, conversationID, opt, operationID)
 }
 
 func SetConversationRecvMessageOpt(callback open_im_sdk_callback.Base, operationID string, conversationIDList string, opt int) {
@@ -424,6 +564,7 @@ func SetConversationRecvMessageOpt(callback open_im_sdk_callback.Base, operation
 	userForSDK.Conversation().SetConversationRecvMessageOpt(callback, conversationIDList, opt, operationID)
 }
 
+//deprecated
 func GetConversationRecvMessageOpt(callback open_im_sdk_callback.Base, operationID string, conversationIDList string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -432,22 +573,7 @@ func GetConversationRecvMessageOpt(callback open_im_sdk_callback.Base, operation
 	}
 	userForSDK.Conversation().GetConversationRecvMessageOpt(callback, conversationIDList, operationID)
 }
-func GetOneConversation(callback open_im_sdk_callback.Base, operationID string, sessionType int, sourceID string) {
-	if err := CheckResourceLoad(userForSDK); err != nil {
-		log.Error(operationID, "resource loading is not completed ", err.Error())
-		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
-		return
-	}
-	userForSDK.Conversation().GetOneConversation(callback, int32(sessionType), sourceID, operationID)
-}
-func GetMultipleConversation(callback open_im_sdk_callback.Base, operationID string, conversationIDList string) {
-	if err := CheckResourceLoad(userForSDK); err != nil {
-		log.Error(operationID, "resource loading is not completed ", err.Error())
-		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
-		return
-	}
-	userForSDK.Conversation().GetMultipleConversation(callback, conversationIDList, operationID)
-}
+
 func DeleteConversation(callback open_im_sdk_callback.Base, operationID string, conversationID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -455,6 +581,14 @@ func DeleteConversation(callback open_im_sdk_callback.Base, operationID string, 
 		return
 	}
 	userForSDK.Conversation().DeleteConversation(callback, conversationID, operationID)
+}
+func DeleteAllConversationFromLocal(callback open_im_sdk_callback.Base, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().DeleteAllConversationFromLocal(callback, operationID)
 }
 func SetConversationDraft(callback open_im_sdk_callback.Base, operationID string, conversationID, draftText string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
@@ -464,6 +598,15 @@ func SetConversationDraft(callback open_im_sdk_callback.Base, operationID string
 	}
 	userForSDK.Conversation().SetConversationDraft(callback, conversationID, draftText, operationID)
 }
+func ResetConversationGroupAtType(callback open_im_sdk_callback.Base, operationID string, conversationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().ResetConversationGroupAtType(callback, conversationID, operationID)
+}
+
 func PinConversation(callback open_im_sdk_callback.Base, operationID string, conversationID string, isPinned bool) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -472,6 +615,7 @@ func PinConversation(callback open_im_sdk_callback.Base, operationID string, con
 	}
 	userForSDK.Conversation().PinConversation(callback, conversationID, isPinned, operationID)
 }
+
 func GetTotalUnreadMsgCount(callback open_im_sdk_callback.Base, operationID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -493,8 +637,12 @@ func SetUserListener(listener open_im_sdk_callback.OnUserListener) {
 	userForSDK.SetUserListener(listener)
 }
 
-func CreateTextAtMessage(operationID string, text, atUserList string) string {
-	return userForSDK.Conversation().CreateTextAtMessage(text, atUserList, operationID)
+func SetWorkMomentsListener(listener open_im_sdk_callback.OnWorkMomentsListener) {
+	userForSDK.SetWorkMomentsListener(listener)
+}
+
+func CreateTextAtMessage(operationID string, text, atUserList, atUsersInfo, message string) string {
+	return userForSDK.Conversation().CreateTextAtMessage(text, atUserList, atUsersInfo, message, operationID)
 }
 
 //
@@ -555,6 +703,9 @@ func CreateFileMessage(operationID string, filePath string, fileName string) str
 func CreateMergerMessage(operationID string, messageList, title, summaryList string) string {
 	return userForSDK.Conversation().CreateMergerMessage(messageList, title, summaryList, operationID)
 }
+func CreateFaceMessage(operationID string, index int, data string) string {
+	return userForSDK.Conversation().CreateFaceMessage(index, data, operationID)
+}
 func CreateForwardMessage(operationID string, m string) string {
 	return userForSDK.Conversation().CreateForwardMessage(m, operationID)
 }
@@ -584,6 +735,14 @@ func GetHistoryMessageList(callback open_im_sdk_callback.Base, operationID strin
 	}
 	userForSDK.Conversation().GetHistoryMessageList(callback, getMessageOptions, operationID)
 }
+func GetHistoryMessageListReverse(callback open_im_sdk_callback.Base, operationID string, getMessageOptions string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().GetHistoryMessageListReverse(callback, getMessageOptions, operationID)
+}
 
 func RevokeMessage(callback open_im_sdk_callback.Base, operationID string, message string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
@@ -609,7 +768,16 @@ func MarkC2CMessageAsRead(callback open_im_sdk_callback.Base, operationID string
 	}
 	userForSDK.Conversation().MarkC2CMessageAsRead(callback, userID, msgIDList, operationID)
 }
+func MarkMessageAsReadByConID(callback open_im_sdk_callback.Base, operationID string, conversationID string, msgIDList string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().MarkMessageAsReadByConID(callback, conversationID, msgIDList, operationID)
+}
 
+//deprecated
 func MarkGroupMessageHasRead(callback open_im_sdk_callback.Base, operationID string, groupID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -618,6 +786,19 @@ func MarkGroupMessageHasRead(callback open_im_sdk_callback.Base, operationID str
 	}
 	userForSDK.Conversation().MarkGroupMessageHasRead(callback, groupID, operationID)
 }
+func MarkGroupMessageAsRead(callback open_im_sdk_callback.Base, operationID string, groupID, msgIDList string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	if userForSDK.AdvancedFunction() == nil {
+		callback.OnError(constant.ErrNotSupportFunction.ErrCode, constant.ErrNotSupportFunction.ErrMsg)
+
+	}
+	userForSDK.AdvancedFunction().MarkGroupMessageAsRead(callback, groupID, msgIDList, operationID)
+}
+
 func DeleteMessageFromLocalStorage(callback open_im_sdk_callback.Base, operationID string, message string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -626,6 +807,43 @@ func DeleteMessageFromLocalStorage(callback open_im_sdk_callback.Base, operation
 	}
 	userForSDK.Conversation().DeleteMessageFromLocalStorage(callback, message, operationID)
 }
+
+func DeleteMessageFromLocalAndSvr(callback open_im_sdk_callback.Base, operationID string, message string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().DeleteMessageFromLocalAndSvr(callback, message, operationID)
+}
+
+func DeleteConversationFromLocalAndSvr(callback open_im_sdk_callback.Base, operationID string, conversationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().DeleteConversationFromLocalAndSvr(callback, conversationID, operationID)
+}
+
+func DeleteAllMsgFromLocalAndSvr(callback open_im_sdk_callback.Base, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().DeleteAllMsgFromLocalAndSvr(callback, operationID)
+}
+
+func DeleteAllMsgFromLocal(callback open_im_sdk_callback.Base, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().DeleteAllMsgFromLocal(callback, operationID)
+}
+
 func ClearC2CHistoryMessage(callback open_im_sdk_callback.Base, operationID string, userID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -634,6 +852,15 @@ func ClearC2CHistoryMessage(callback open_im_sdk_callback.Base, operationID stri
 	}
 	userForSDK.Conversation().ClearC2CHistoryMessage(callback, userID, operationID)
 }
+func ClearC2CHistoryMessageFromLocalAndSvr(callback open_im_sdk_callback.Base, operationID string, userID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().ClearC2CHistoryMessageFromLocalAndSvr(callback, userID, operationID)
+}
+
 func ClearGroupHistoryMessage(callback open_im_sdk_callback.Base, operationID string, groupID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
 		log.Error(operationID, "resource loading is not completed ", err.Error())
@@ -641,6 +868,14 @@ func ClearGroupHistoryMessage(callback open_im_sdk_callback.Base, operationID st
 		return
 	}
 	userForSDK.Conversation().ClearGroupHistoryMessage(callback, groupID, operationID)
+}
+func ClearGroupHistoryMessageFromLocalAndSvr(callback open_im_sdk_callback.Base, operationID string, groupID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Conversation().ClearGroupHistoryMessageFromLocalAndSvr(callback, groupID, operationID)
 }
 func InsertSingleMessageToLocalStorage(callback open_im_sdk_callback.Base, operationID string, message, recvID, sendID string) {
 	if err := CheckResourceLoad(userForSDK); err != nil {
@@ -677,7 +912,8 @@ func InitOnce(config *sdk_struct.IMConfig) bool {
 }
 
 func CheckToken(userID, token string) error {
-	return login.CheckToken(userID, token, "")
+	err, _ := login.CheckToken(userID, token, "")
+	return err
 }
 
 func CheckResourceLoad(uSDK *login.LoginMgr) error {
@@ -714,4 +950,134 @@ func uploadImage(callback open_im_sdk_callback.Base, operationID string, filePat
 }
 func GetConversationIDBySessionType(sourceID string, sessionType int) string {
 	return utils.GetConversationIDBySessionType(sourceID, sessionType)
+}
+func GetAtAllTag() string {
+	return constant.AtAllString
+}
+
+//////////////////////////signaling//////////////////////////////////////////
+func SetSignalingListener(callback open_im_sdk_callback.OnSignalingListener) {
+	if callback == nil || userForSDK == nil {
+		log.Error("callback or userForSDK is nil")
+		return
+	}
+	userForSDK.SetSignalingListener(callback)
+}
+
+func SignalingInviteInGroup(callback open_im_sdk_callback.Base, operationID string, signalInviteInGroupReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().InviteInGroup(callback, signalInviteInGroupReq, operationID)
+}
+
+func SignalingInvite(callback open_im_sdk_callback.Base, operationID string, signalInviteReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().Invite(callback, signalInviteReq, operationID)
+}
+
+func SignalingAccept(callback open_im_sdk_callback.Base, operationID string, signalAcceptReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().Accept(callback, signalAcceptReq, operationID)
+}
+
+func SignalingReject(callback open_im_sdk_callback.Base, operationID string, signalRejectReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().Reject(callback, signalRejectReq, operationID)
+}
+
+func SignalingCancel(callback open_im_sdk_callback.Base, operationID string, signalCancelReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().Cancel(callback, signalCancelReq, operationID)
+}
+
+func SignalingHungUp(callback open_im_sdk_callback.Base, operationID string, signalHungUpReq string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Signaling().HungUp(callback, signalHungUpReq, operationID)
+}
+
+func GetSubDepartment(callback open_im_sdk_callback.Base, operationID string, departmentID string, offset, count int) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Organization().GetSubDepartment(callback, departmentID, offset, count, operationID)
+}
+
+func GetDepartmentMember(callback open_im_sdk_callback.Base, operationID string, departmentID string, offset, count int) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Organization().GetDepartmentMember(callback, departmentID, offset, count, operationID)
+}
+
+func GetUserInDepartment(callback open_im_sdk_callback.Base, operationID string, userID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Organization().GetUserInDepartment(callback, userID, operationID)
+}
+
+func GetDepartmentMemberAndSubDepartment(callback open_im_sdk_callback.Base, operationID string, departmentID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.Organization().GetDepartmentMemberAndSubDepartment(callback, departmentID, operationID)
+}
+
+// workMomentsInterface
+func GetWorkMomentsUnReadCount(callback open_im_sdk_callback.Base, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.WorkMoments().GetWorkMomentsUnReadCount(callback, operationID)
+}
+
+func GetWorkMomentsNotification(callback open_im_sdk_callback.Base, operationID string, offset, count int) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.WorkMoments().GetWorkMomentsNotification(callback, offset, count, operationID)
+}
+
+func ClearWorkMomentsNotification(callback open_im_sdk_callback.Base, operationID string) {
+	if err := CheckResourceLoad(userForSDK); err != nil {
+		log.Error(operationID, "resource loading is not completed ", err.Error())
+		callback.OnError(constant.ErrResourceLoadNotComplete.ErrCode, constant.ErrResourceLoadNotComplete.ErrMsg)
+		return
+	}
+	userForSDK.WorkMoments().ClearWorkMomentsNotification(callback, operationID)
 }

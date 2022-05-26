@@ -1,9 +1,12 @@
 package common
 
 import (
+	"fmt"
+	"open_im_sdk/pkg/db"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/jinzhu/copier"
-	"open_im_sdk/pkg/db"
+
 	//log2 "open_im_sdk/pkg/log"
 	"open_im_sdk/pkg/server_api_params"
 )
@@ -424,6 +427,97 @@ func CheckGroupMemberDiff(a []*db.LocalGroupMember, b []*db.LocalGroupMember) (a
 	return aInBNot, bInANot, sameA, sameB
 }
 
+func CheckDepartmentMemberDiff(a []*db.LocalDepartmentMember, b []*db.LocalDepartmentMember) (aInBNot, bInANot, sameA, sameB []int) {
+	//to map, friendid_>friendinfo
+	mapA := make(map[string]*db.LocalDepartmentMember)
+	for _, v := range a {
+		mapA[v.DepartmentID+v.UserID] = v
+	}
+	mapB := make(map[string]*db.LocalDepartmentMember)
+	for _, v := range b {
+		mapB[v.DepartmentID+v.UserID] = v
+	}
+
+	aInBNot = make([]int, 0)
+	bInANot = make([]int, 0)
+	sameA = make([]int, 0)
+	sameB = make([]int, 0)
+
+	//for a
+	for i, v := range a {
+		ia, ok := mapB[v.DepartmentID+v.UserID]
+		if !ok {
+			//in a, but not in b
+			aInBNot = append(aInBNot, i)
+		} else {
+			//reflect.DeepEqual(a, b)
+			//	reflect.DeepEqual(v, ia)
+			//if !cmp.Equal(v, ia)
+			if !cmp.Equal(v, ia) {
+				// key of a and b is equal, but value different
+				sameA = append(sameA, i)
+			}
+		}
+	}
+	//for b
+	for i, v := range b {
+		ib, ok := mapA[v.DepartmentID+v.UserID]
+		if !ok {
+			bInANot = append(bInANot, i)
+		} else {
+			if !cmp.Equal(v, ib) {
+				sameB = append(sameB, i)
+			}
+		}
+	}
+	return aInBNot, bInANot, sameA, sameB
+
+}
+
+func CheckDepartmentDiff(a []*db.LocalDepartment, b []*db.LocalDepartment) (aInBNot, bInANot, sameA, sameB []int) {
+	//to map, friendid_>friendinfo
+	mapA := make(map[string]*db.LocalDepartment)
+	for _, v := range a {
+		mapA[v.DepartmentID] = v
+	}
+	mapB := make(map[string]*db.LocalDepartment)
+	for _, v := range b {
+		mapB[v.DepartmentID] = v
+	}
+
+	aInBNot = make([]int, 0)
+	bInANot = make([]int, 0)
+	sameA = make([]int, 0)
+	sameB = make([]int, 0)
+
+	//for a
+	for i, v := range a {
+		ia, ok := mapB[v.DepartmentID]
+		if !ok {
+			//in a, but not in b
+			aInBNot = append(aInBNot, i)
+		} else {
+			if !cmp.Equal(v, ia) {
+				// key of a and b is equal, but value different
+				sameA = append(sameA, i)
+			}
+		}
+	}
+	//for b
+	for i, v := range b {
+		ib, ok := mapA[v.DepartmentID]
+		if !ok {
+			bInANot = append(bInANot, i)
+		} else {
+			if !cmp.Equal(v, ib) {
+				sameB = append(sameB, i)
+			}
+		}
+	}
+	return aInBNot, bInANot, sameA, sameB
+
+}
+
 func CheckGroupRequestDiff(a []*db.LocalGroupRequest, b []*db.LocalGroupRequest) (aInBNot, bInANot, sameA, sameB []int) {
 	//to map, friendid_>friendinfo
 	mapA := make(map[string]*db.LocalGroupRequest)
@@ -517,9 +611,9 @@ func CheckAdminGroupRequestDiff(a []*db.LocalAdminGroupRequest, b []*db.LocalAdm
 	return aInBNot, bInANot, sameA, sameB
 }
 
-func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*db.LocalConversation) (aInBNot, bInANot, sameA, sameB []int) {
-	mapA := make(map[string]*db.LocalConversation)
-	mapB := make(map[string]*db.LocalConversation)
+func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*tempConversation) (aInBNot, bInANot, sameA, sameB []int) {
+	mapA := make(map[string]*tempConversation)
+	mapB := make(map[string]*tempConversation)
 	for _, v := range conversationsOnServer {
 		mapA[v.ConversationID] = v
 	}
@@ -530,7 +624,6 @@ func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*db
 	bInANot = make([]int, 0)
 	sameA = make([]int, 0)
 	sameB = make([]int, 0)
-
 	for i, v := range conversationsOnServer {
 		ia, ok := mapB[v.ConversationID]
 		if !ok {
@@ -538,7 +631,10 @@ func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*db
 			//fmt.Println("aInBNot", conversationsOnServer[i], ia)
 			aInBNot = append(aInBNot, i)
 		} else {
+			//fmt.Println("test result is v", v)
+			//fmt.Println("test result is ia", ia)
 			if !cmp.Equal(v, ia) {
+				fmt.Println(v, ia)
 				// key of a and b is equal, but value different
 				//fmt.Println("sameA", conversationsOnServer[i], ia)
 				sameA = append(sameA, i)
@@ -550,7 +646,6 @@ func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*db
 		ib, ok := mapA[v.ConversationID]
 		if !ok {
 			//fmt.Println("bInANot", conversationsOnLocal[i], ib)
-
 			bInANot = append(bInANot, i)
 		} else {
 			if !cmp.Equal(v, ib) {
@@ -559,6 +654,7 @@ func CheckConversationListDiff(conversationsOnServer, conversationsOnLocal []*db
 			}
 		}
 	}
+
 	return aInBNot, bInANot, sameA, sameB
 }
 
@@ -627,27 +723,125 @@ func TransferToLocalAdminGroupRequest(apiData []*server_api_params.GroupRequest)
 	return local
 }
 
-func TransferToLocalSendGroupRequest(apiData []*server_api_params.GroupRequest) []*db.LocalGroupRequest {
-	local := make([]*db.LocalGroupRequest, 0)
-	//operationID := utils.OperationIDGenerator()
+func TransferToLocalDepartmentMember(apiData []*server_api_params.UserDepartmentMember) []*db.LocalDepartmentMember {
+	local := make([]*db.LocalDepartmentMember, 0)
 	for _, v := range apiData {
-		var node db.LocalGroupRequest
-		//	log2.NewDebug(operationID, "local test api ", v)
-		SendGroupRequestCopyToLocal(&node, v)
-		//		log2.NewDebug(operationID, "local test local  ", node)
+		var node db.LocalDepartmentMember
+		copier.Copy(&node, v.DepartmentMember)
+		copier.Copy(&node, v.OrganizationUser)
 		local = append(local, &node)
 	}
-	//	log2.NewDebug(operationID, "local test local all ", local)
 	return local
 }
 
-func TransferToLocalConversation(resp server_api_params.GetServerConversationListResp) []*db.LocalConversation {
+func TransferToLocalDepartment(apiData []*server_api_params.Department) []*db.LocalDepartment {
+	local := make([]*db.LocalDepartment, 0)
+	for _, v := range apiData {
+		var node db.LocalDepartment
+		copier.Copy(&node, v)
+		local = append(local, &node)
+	}
+	return local
+}
+
+func TransferToLocalSendGroupRequest(apiData []*server_api_params.GroupRequest) []*db.LocalGroupRequest {
+	local := make([]*db.LocalGroupRequest, 0)
+	for _, v := range apiData {
+		var node db.LocalGroupRequest
+		SendGroupRequestCopyToLocal(&node, v)
+		local = append(local, &node)
+	}
+	return local
+}
+
+type tempConversation struct {
+	RecvMsgOpt       int32
+	ConversationID   string
+	ConversationType int32
+	UserID           string
+	GroupID          string
+	IsPrivateChat    bool
+	IsPinned         bool
+	GroupAtType      int32
+	IsNotInGroup     bool
+	AttachedInfo     string
+	Ex               string
+}
+
+func ServerTransferToTempConversation(resp server_api_params.GetAllConversationsResp) []*tempConversation {
+	var tempConversations []*tempConversation
+	for _, serverConversation := range resp.Conversations {
+		tempConversations = append(tempConversations, &tempConversation{
+			RecvMsgOpt:       serverConversation.RecvMsgOpt,
+			ConversationID:   serverConversation.ConversationID,
+			ConversationType: serverConversation.ConversationType,
+			UserID:           serverConversation.UserID,
+			GroupID:          serverConversation.GroupID,
+			IsPrivateChat:    serverConversation.IsPrivateChat,
+			IsPinned:         serverConversation.IsPinned,
+			GroupAtType:      serverConversation.GroupAtType,
+			IsNotInGroup:     serverConversation.IsNotInGroup,
+			AttachedInfo:     serverConversation.AttachedInfo,
+			Ex:               serverConversation.Ex,
+		})
+	}
+	return tempConversations
+}
+
+func LocalTransferToTempConversation(local []*db.LocalConversation) []*tempConversation {
+	var tempConversations []*tempConversation
+	for _, localConversation := range local {
+		tempConversations = append(tempConversations, &tempConversation{
+			RecvMsgOpt:       localConversation.RecvMsgOpt,
+			ConversationID:   localConversation.ConversationID,
+			ConversationType: localConversation.ConversationType,
+			UserID:           localConversation.UserID,
+			GroupID:          localConversation.GroupID,
+			IsPrivateChat:    localConversation.IsPrivateChat,
+			IsPinned:         localConversation.IsPinned,
+			GroupAtType:      localConversation.GroupAtType,
+			IsNotInGroup:     localConversation.IsNotInGroup,
+			AttachedInfo:     localConversation.AttachedInfo,
+			Ex:               localConversation.Ex,
+		})
+	}
+	return tempConversations
+}
+
+func TransferToLocalConversation(resp server_api_params.GetAllConversationsResp) []*db.LocalConversation {
 	var localConversations []*db.LocalConversation
-	for _, serverConversation := range resp.ConversationOptResultList {
+	for _, serverConversation := range resp.Conversations {
 		localConversations = append(localConversations, &db.LocalConversation{
-			RecvMsgOpt:     *serverConversation.Result,
-			ConversationID: serverConversation.ConversationID,
+			RecvMsgOpt:       serverConversation.RecvMsgOpt,
+			ConversationID:   serverConversation.ConversationID,
+			ConversationType: serverConversation.ConversationType,
+			UserID:           serverConversation.UserID,
+			GroupID:          serverConversation.GroupID,
+			IsPrivateChat:    serverConversation.IsPrivateChat,
+			IsPinned:         serverConversation.IsPinned,
+			GroupAtType:      serverConversation.GroupAtType,
+			IsNotInGroup:     serverConversation.IsNotInGroup,
+			AttachedInfo:     serverConversation.AttachedInfo,
+			Ex:               serverConversation.Ex,
 		})
 	}
 	return localConversations
+}
+
+func TransferToServerConversation(local []*db.LocalConversation) server_api_params.GetAllConversationsResp {
+	var serverConversations server_api_params.GetAllConversationsResp
+	for _, localConversation := range local {
+		serverConversations.Conversations = append(serverConversations.Conversations, server_api_params.Conversation{
+			RecvMsgOpt:       localConversation.RecvMsgOpt,
+			ConversationID:   localConversation.ConversationID,
+			ConversationType: localConversation.ConversationType,
+			UserID:           localConversation.UserID,
+			GroupID:          localConversation.GroupID,
+			IsPrivateChat:    localConversation.IsPrivateChat,
+			IsPinned:         localConversation.IsPinned,
+			AttachedInfo:     localConversation.AttachedInfo,
+			Ex:               localConversation.Ex,
+		})
+	}
+	return serverConversations
 }

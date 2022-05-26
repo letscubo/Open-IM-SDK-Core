@@ -35,6 +35,19 @@ type Friend struct {
 	db             *db.DataBase
 	user           *user.User
 	p              *ws.PostApi
+	loginTime      int64
+}
+
+func (f *Friend) LoginTime() int64 {
+	return f.loginTime
+}
+
+func (f *Friend) SetLoginTime(loginTime int64) {
+	f.loginTime = loginTime
+}
+
+func (f *Friend) Db() *db.DataBase {
+	return f.db
 }
 
 func NewFriend(loginUserID string, db *db.DataBase, user *user.User, p *ws.PostApi) *Friend {
@@ -61,26 +74,31 @@ func (f *Friend) getDesignatedFriendsInfo(callback open_im_sdk_callback.Base, fr
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "return: ", r)
 	return r
 }
-func (f *Friend) GetUserNameAndFaceUrlByUid(callback open_im_sdk_callback.Base, friendUserID, operationID string) (faceUrl, name string, err error) {
+
+func (f *Friend) GetUserNameAndFaceUrlByUid(friendUserID, operationID string) (faceUrl, name string, err error, isFromSvr bool) {
+	isFromSvr = false
 	friendInfo, err := f.db.GetFriendInfoByFriendUserID(friendUserID)
 	if err == nil {
 		if friendInfo.Remark != "" {
-			return friendInfo.FaceURL, friendInfo.Remark, nil
+			return friendInfo.FaceURL, friendInfo.Remark, nil, isFromSvr
 		} else {
-			return friendInfo.FaceURL, friendInfo.Nickname, nil
+			return friendInfo.FaceURL, friendInfo.Nickname, nil, isFromSvr
 		}
 	} else {
 		if operationID == "" {
 			operationID = utils.OperationIDGenerator()
 		}
-		userInfos := f.user.GetUsersInfoFromSvr(callback, []string{friendUserID}, operationID)
+		userInfos, err := f.user.GetUsersInfoFromSvrNoCallback([]string{friendUserID}, operationID)
+		if err != nil {
+			return "", "", err, isFromSvr
+		}
 		for _, v := range userInfos {
-			return v.FaceURL, v.Nickname, nil
+			isFromSvr = true
+			return v.FaceURL, v.Nickname, nil, isFromSvr
 		}
 		log.Info(operationID, "GetUsersInfoFromSvr ", friendUserID)
 	}
-	return "", "", errors.New("getUserNameAndFaceUrlByUid err")
-
+	return "", "", errors.New("getUserNameAndFaceUrlByUid err"), isFromSvr
 }
 
 func (f *Friend) GetDesignatedFriendListInfo(callback open_im_sdk_callback.Base, friendUserIDList []string, operationID string) []*db.LocalFriend {
@@ -188,7 +206,46 @@ func (f *Friend) getFriendList(callback open_im_sdk_callback.Base, operationID s
 	common.CheckDBErrCallback(callback, err, operationID)
 	return common.MergeFriendBlackResult(localFriendList, localBlackList)
 }
-
+func (f *Friend) searchFriends(callback open_im_sdk_callback.Base, param sdk.SearchFriendsParam, operationID string) sdk.SearchFriendsCallback {
+	if len(param.KeywordList) == 0 || (!param.IsSearchNickname && !param.IsSearchUserID && !param.IsSearchRemark) {
+		common.CheckAnyErrCallback(callback, 201, errors.New("keyword is null or search field all false"), operationID)
+	}
+	localFriendList, err := f.db.SearchFriendList(param.KeywordList[0], param.IsSearchUserID, param.IsSearchNickname, param.IsSearchRemark)
+	common.CheckDBErrCallback(callback, err, operationID)
+	localBlackList, err := f.db.GetBlackList()
+	common.CheckDBErrCallback(callback, err, operationID)
+	return mergeFriendBlackSearchResult(localFriendList, localBlackList)
+}
+func mergeFriendBlackSearchResult(base []*db.LocalFriend, add []*db.LocalBlack) (result []*sdk.SearchFriendItem) {
+	blackUserIDList := func(bl []*db.LocalBlack) (result []string) {
+		for _, v := range bl {
+			result = append(result, v.BlockUserID)
+		}
+		return result
+	}(add)
+	for _, v := range base {
+		node := sdk.SearchFriendItem{}
+		node.OwnerUserID = v.OwnerUserID
+		node.FriendUserID = v.FriendUserID
+		node.Remark = v.Remark
+		node.CreateTime = v.CreateTime
+		node.AddSource = v.AddSource
+		node.OperatorUserID = v.OperatorUserID
+		node.Nickname = v.Nickname
+		node.FaceURL = v.FaceURL
+		node.Gender = v.Gender
+		node.PhoneNumber = v.PhoneNumber
+		node.Birth = v.Birth
+		node.Email = v.Email
+		node.Ex = v.Ex
+		node.AttachedInfo = v.AttachedInfo
+		if !utils.IsContain(v.FriendUserID, blackUserIDList) {
+			node.Relationship = constant.FriendRelationship
+		}
+		result = append(result, &node)
+	}
+	return result
+}
 func (f *Friend) getBlackList(callback open_im_sdk_callback.Base, operationID string) sdk.GetBlackListCallback {
 	localBlackList, err := f.db.GetBlackList()
 	common.CheckDBErrCallback(callback, err, operationID)
@@ -516,7 +573,10 @@ func (f *Friend) DoNotification(msg *api.MsgData, conversationCh chan common.Cmd
 		log.Error(operationID, "f.friendListener == nil")
 		return
 	}
-
+	if msg.SendTime < f.loginTime {
+		log.Warn(operationID, "ignore notification ", msg.ClientMsgID, msg.ServerMsgID, msg.Seq, msg.ContentType)
+		return
+	}
 	go func() {
 		switch msg.ContentType {
 		case constant.FriendApplicationNotification:
@@ -594,6 +654,21 @@ func (f *Friend) friendInfoChangedNotification(msg *api.MsgData, conversationCh 
 		conversationID := utils.GetConversationIDBySessionType(detail.UserID, constant.SingleChatType)
 		_ = common.TriggerCmdUpdateConversation(common.UpdateConNode{ConID: conversationID, Action: constant.UpdateFaceUrlAndNickName, Args: common.SourceIDAndSessionType{SourceID: detail.UserID, SessionType: constant.SingleChatType}}, conversationCh)
 		_ = common.TriggerCmdUpdateConversation(common.UpdateConNode{ConID: conversationID, Action: constant.ConChange, Args: []string{conversationID}}, conversationCh)
+		go func() {
+			friendInfo, err := f.db.GetFriendInfoByFriendUserID(detail.UserID)
+			if err == nil {
+				_ = f.db.UpdateMsgSenderFaceURLAndSenderNickname(detail.UserID, friendInfo.FaceURL, friendInfo.Nickname, constant.SingleChatType)
+			}
+		}()
+
+	} else {
+		f.user.SyncLoginUserInfo(operationID)
+		go func() {
+			loginUserInfo, err := f.db.GetLoginUser()
+			if err == nil {
+				_ = f.db.UpdateMsgSenderFaceURLAndSenderNickname(detail.UserID, loginUserInfo.FaceURL, loginUserInfo.Nickname, constant.SingleChatType)
+			}
+		}()
 	}
 }
 

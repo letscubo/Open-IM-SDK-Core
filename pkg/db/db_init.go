@@ -4,11 +4,20 @@ import (
 	"errors"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"open_im_sdk/pkg/constant"
 	"open_im_sdk/pkg/log"
 	"open_im_sdk/pkg/utils"
 	"sync"
 )
+
+var UserDBMap map[string]*DataBase
+
+var UserDBLock sync.RWMutex
+
+func init() {
+	UserDBMap = make(map[string]*DataBase, 0)
+}
 
 type DataBase struct {
 	loginUserID string
@@ -17,11 +26,33 @@ type DataBase struct {
 	mRWMutex    sync.RWMutex
 }
 
+//func (d *DataBase) CloseDB() error {
+//	d.mRWMutex.Lock()
+//	defer d.mRWMutex.Unlock()
+//	if d.conn != nil {
+//
+//		if err := d.conn.Close(); err != nil {
+//			log.Error("", "GetSendingMessageList failed ", err.Error())
+//			return err
+//		}
+//	}
+//	return nil
+//}
+
 func NewDataBase(loginUserID string, dbDir string) (*DataBase, error) {
-	dataBase := &DataBase{loginUserID: loginUserID, dbDir: dbDir}
-	err := dataBase.initDB()
-	if err != nil {
-		return dataBase, utils.Wrap(err, "initDB failed")
+	UserDBLock.Lock()
+	defer UserDBLock.Unlock()
+	dataBase, ok := UserDBMap[loginUserID]
+	if !ok {
+		dataBase = &DataBase{loginUserID: loginUserID, dbDir: dbDir}
+		err := dataBase.initDB()
+		if err != nil {
+			return dataBase, utils.Wrap(err, "initDB failed")
+		}
+		UserDBMap[loginUserID] = dataBase
+		log.Info("", "open db", loginUserID)
+	} else {
+		log.Info("", "db in map", loginUserID)
 	}
 	dataBase.setChatLogFailedStatus()
 	return dataBase, nil
@@ -50,12 +81,16 @@ func (d *DataBase) initDB() error {
 	d.mRWMutex.Lock()
 	defer d.mRWMutex.Unlock()
 
-	dbFileName := d.dbDir + "OpenIM_" + constant.BigVersion + "_" + d.loginUserID + ".db"
-	db, err := gorm.Open(sqlite.Open(dbFileName), &gorm.Config{})
+	dbFileName := d.dbDir + "/OpenIM_" + constant.BigVersion + "_" + d.loginUserID + ".db"
+	//db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{
+	//  Logger: logger.Default.LogMode(logger.Silent),
+	//})
+	db, err := gorm.Open(sqlite.Open(dbFileName), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	log.Info("open db:", dbFileName)
 	if err != nil {
 		return utils.Wrap(err, "open db failed")
 	}
+
 	d.conn = db
 	//db, err := sql.Open("sqlite3", SvrConf.DbDir+"OpenIM_"+uid+".db")
 	//sdkLog("open db:", SvrConf.DbDir+"OpenIM_"+uid+".db")
@@ -76,7 +111,12 @@ func (d *DataBase) initDB() error {
 		&LocalSeqData{},
 		&LocalConversation{},
 		&LocalChatLog{},
-		&LocalAdminGroupRequest{})
+		&LocalAdminGroupRequest{},
+		&LocalDepartment{},
+		&LocalDepartmentMember{},
+		&LocalWorkMomentsNotification{},
+		&LocalWorkMomentsNotificationUnreadCount{},
+	)
 	if !db.Migrator().HasTable(&LocalFriend{}) {
 		//log.NewInfo("CreateTable Friend")
 		db.Migrator().CreateTable(&LocalFriend{})
@@ -123,6 +163,22 @@ func (d *DataBase) initDB() error {
 	}
 	if !db.Migrator().HasTable(&LocalAdminGroupRequest{}) {
 		db.Migrator().CreateTable(&LocalAdminGroupRequest{})
+	}
+	if !db.Migrator().HasTable(&LocalDepartment{}) {
+		db.Migrator().CreateTable(&LocalDepartment{})
+	}
+	if !db.Migrator().HasTable(&LocalDepartmentMember{}) {
+		db.Migrator().CreateTable(&LocalDepartmentMember{})
+	}
+	if !db.Migrator().HasTable(&LocalWorkMomentsNotification{}) {
+		db.Migrator().CreateTable(&LocalWorkMomentsNotification{})
+	}
+	if !db.Migrator().HasTable(&LocalWorkMomentsNotificationUnreadCount{}) {
+		db.Migrator().CreateTable(&LocalWorkMomentsNotificationUnreadCount{})
+	}
+	log.NewInfo("init db", "startInitWorkMomentsNotificationUnreadCount ")
+	if err := d.InitWorkMomentsNotificationUnreadCount(); err != nil {
+		log.NewError("init InitWorkMomentsNotificationUnreadCount:", utils.GetSelfFuncName(), err.Error())
 	}
 	return nil
 }

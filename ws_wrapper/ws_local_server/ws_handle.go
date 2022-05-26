@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/websocket"
+	"open_im_sdk/pkg/log"
 	utils2 "open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
 	"open_im_sdk/ws_wrapper/utils"
@@ -22,7 +23,7 @@ type EventData struct {
 	OperationID string `json:"operationID"`
 }
 
-type BaseSuccFailed struct {
+type BaseSuccessFailed struct {
 	funcName    string //e.g open_im_sdk/open_im_sdk.Login
 	operationID string
 	uid         string
@@ -32,19 +33,19 @@ type BaseSuccFailed struct {
 func cleanUpfuncName(funcName string) string {
 	end := strings.LastIndex(funcName, ".")
 	if end == -1 {
-		wrapSdkLog("", "funcName not include.", funcName)
+		log.Info("", "funcName not include.", funcName)
 		return ""
 	}
 	return funcName[end+1:]
 }
 
-func (b *BaseSuccFailed) OnError(errCode int32, errMsg string) {
-	wrapSdkLog("","!!!!!!!OnError ", b.uid, b.operationID, b.funcName)
+func (b *BaseSuccessFailed) OnError(errCode int32, errMsg string) {
+	log.Info("", "!!!!!!!OnError ", b.uid, b.operationID, b.funcName)
 	SendOneUserMessage(EventData{cleanUpfuncName(b.funcName), errCode, errMsg, "", b.operationID}, b.uid)
 }
 
-func (b *BaseSuccFailed) OnSuccess(data string) {
-	wrapSdkLog("", "!!!!!!!OnSuccess ", b.uid, b.operationID, b.funcName)
+func (b *BaseSuccessFailed) OnSuccess(data string) {
+	log.Info("", "!!!!!!!OnSuccess ", b.uid, b.operationID, b.funcName)
 	SendOneUserMessage(EventData{cleanUpfuncName(b.funcName), 0, "", data, b.operationID}, b.uid)
 }
 
@@ -67,11 +68,11 @@ type WsFuncRouter struct {
 }
 
 func DelUserRouter(uid string) {
-	wrapSdkLog("", "DelUserRouter ", uid)
+	log.Info("", "DelUserRouter ", uid)
 	sub := " " + utils.PlatformIDToName(sdk_struct.SvrConf.Platform)
 	idx := strings.LastIndex(uid, sub)
 	if idx == -1 {
-		wrapSdkLog("", "err uid, not Web", uid)
+		log.Info("", "err uid, not Web", uid, sub)
 		return
 	}
 
@@ -80,16 +81,22 @@ func DelUserRouter(uid string) {
 	UserRouteRwLock.Lock()
 	defer UserRouteRwLock.Unlock()
 	urm, ok := UserRouteMap[uid]
+	operationID := utils2.OperationIDGenerator()
 	if ok {
-		operationID := utils2.OperationIDGenerator()
-		wrapSdkLog("", "DelUserRouter logout, UnInitSDK ", uid, operationID)
+
+		log.Info(operationID, "DelUserRouter logout, UnInitSDK ", uid, operationID)
 
 		urm.wsRouter.LogoutNoCallback(uid, operationID)
 		urm.wsRouter.UnInitSDK()
 	} else {
-		wrapSdkLog("", "no found UserRouteMap: ", uid)
+		log.Info(operationID, "no found UserRouteMap: ", uid)
 	}
-	wrapSdkLog("", "DelUserRouter delete ", uid)
+	log.Info(operationID, "DelUserRouter delete ", uid)
+	t, ok := UserRouteMap[uid]
+	if ok {
+		t.refName = make(map[string]reflect.Value)
+	}
+
 	delete(UserRouteMap, uid)
 }
 
@@ -109,24 +116,27 @@ func GenUserRouterNoLock(uid string) *RefRouter {
 	mNum := vf.NumMethod()
 	for i := 0; i < mNum; i++ {
 		mName := vft.Method(i).Name
-		wrapSdkLog("", "index:", i, " MethodName:", mName)
+		log.Info("", "index:", i, " MethodName:", mName)
 		RouteMap1[mName] = vf.Method(i)
 	}
 	wsRouter1.InitSDK(ConfigSvr, "0")
 	wsRouter1.SetAdvancedMsgListener()
 	wsRouter1.SetConversationListener()
-	wrapSdkLog("", "SetFriendListener() ", uid)
+	log.Info("", "SetFriendListener() ", uid)
 	wsRouter1.SetFriendListener()
-	wrapSdkLog("", "SetGroupListener() ", uid)
+	log.Info("", "SetGroupListener() ", uid)
 	wsRouter1.SetGroupListener()
-	wrapSdkLog("", "SetUserListener() ", uid)
+	log.Info("", "SetUserListener() ", uid)
 	wsRouter1.SetUserListener()
-
+	log.Info("", "SetSignalingListener() ", uid)
+	wsRouter1.SetSignalingListener()
+	log.Info("", "setWorkMomentsListener", uid)
+	wsRouter1.SetWorkMomentsListener()
 	var rr RefRouter
-	rr.refName = &RouteMap1
+	rr.refName = RouteMap1
 	rr.wsRouter = &wsRouter1
 	UserRouteMap[uid] = rr
-	wrapSdkLog("", "insert UserRouteMap: ", uid)
+	log.Info("", "insert UserRouteMap: ", uid)
 	return &rr
 }
 
@@ -136,33 +146,53 @@ func (wsRouter *WsFuncRouter) GlobalSendMessage(data interface{}) {
 
 //listener
 func SendOneUserMessage(data interface{}, uid string) {
-	bMsg, _ := json.Marshal(data)
 	var chMsg ChanMsg
-	chMsg.data = bMsg
+	chMsg.data, _ = json.Marshal(data)
 	chMsg.uid = uid
-	err := send2Ch(WS.ch, chMsg, 2)
+	err := send2Ch(WS.ch, &chMsg, 2)
 	if err != nil {
-		wrapSdkLog("", "send2ch failed, ", err, string(bMsg), uid)
+		log.Info("", "send2ch failed, ", err, string(chMsg.data), uid)
 		return
 	}
-	wrapSdkLog("", "send response to web: ", string(bMsg))
+	log.Info("", "send response to web: ", string(chMsg.data))
+}
+
+func SendOneUserMessageForTest(data interface{}, uid string) {
+	d, err := json.Marshal(data)
+	log.Info("", "Marshal ", string(d))
+	var chMsg ChanMsg
+	chMsg.data = d
+	chMsg.uid = uid
+	err = send2ChForTest(WS.ch, chMsg, 2)
+	if err != nil {
+		log.Info("", "send2ch failed, ", err, string(chMsg.data), uid)
+		return
+	}
+	log.Info("", "send response to web: ", string(chMsg.data))
 }
 
 func SendOneConnMessage(data interface{}, conn *UserConn) {
 	bMsg, _ := json.Marshal(data)
 	err := WS.writeMsg(conn, websocket.TextMessage, bMsg)
-	wrapSdkLog("", "send response to web: ", string(bMsg), "userUid", WS.getUserUid(conn))
+	log.Info("", "send response to web: ", string(bMsg), "userUid", WS.getUserUid(conn))
 	if err != nil {
-		wrapSdkLog("", "WS WriteMsg error", "", "userIP", conn.RemoteAddr().String(), "userUid", WS.getUserUid(conn), "error", err, "data", data)
+		log.Info("", "WS WriteMsg error", "", "userIP", conn.RemoteAddr().String(), "userUid", WS.getUserUid(conn), "error", err, "data", data)
 	} else {
-		wrapSdkLog("", "WS WriteMsg ok", "data", data, "userUid", WS.getUserUid(conn))
+		log.Info("", "WS WriteMsg ok", "data", data, "userUid", WS.getUserUid(conn))
 	}
 }
 
-func send2Ch(ch chan ChanMsg, value ChanMsg, timeout int64) error {
+func send2ChForTest(ch chan ChanMsg, value ChanMsg, timeout int64) error {
+	var t ChanMsg
+	t = value
+	log.Info("", "test uid ", t.uid)
+	return nil
+}
+
+func send2Ch(ch chan ChanMsg, value *ChanMsg, timeout int64) error {
 	var flag = 0
 	select {
-	case ch <- value:
+	case ch <- *value:
 		flag = 1
 	case <-time.After(time.Second * time.Duration(timeout)):
 		flag = 2
@@ -170,7 +200,7 @@ func send2Ch(ch chan ChanMsg, value ChanMsg, timeout int64) error {
 	if flag == 1 {
 		return nil
 	} else {
-		wrapSdkLog("", "send cmd timeout, ", timeout, value)
+		log.Info("", "send cmd timeout, ", timeout, value)
 		return errors.New("send cmd timeout")
 	}
 }

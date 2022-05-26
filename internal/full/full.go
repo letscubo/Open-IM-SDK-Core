@@ -1,28 +1,32 @@
 package full
 
 import (
+	"open_im_sdk/internal/cache"
 	"open_im_sdk/internal/friend"
 	"open_im_sdk/internal/group"
 	"open_im_sdk/internal/user"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
+	"open_im_sdk/pkg/constant"
 	sdk "open_im_sdk/pkg/sdk_params_callback"
 	api "open_im_sdk/pkg/server_api_params"
+	"open_im_sdk/pkg/utils"
 )
 
 type Full struct {
-	user   *user.User
-	friend *friend.Friend
-	group  *group.Group
+	user      *user.User
+	friend    *friend.Friend
+	group     *group.Group
+	ch        chan common.Cmd2Value
+	userCache *cache.Cache
 }
 
-func NewFull(user *user.User, friend *friend.Friend, group *group.Group) *Full {
-	return &Full{user: user, friend: friend, group: group}
+func NewFull(user *user.User, friend *friend.Friend, group *group.Group, ch chan common.Cmd2Value, userCache *cache.Cache) *Full {
+	return &Full{user: user, friend: friend, group: group, ch: ch, userCache: userCache}
 }
-
 func (u *Full) getUsersInfo(callback open_im_sdk_callback.Base, userIDList sdk.GetUsersInfoParam, operationID string) sdk.GetUsersInfoCallback {
-	friendList := u.friend.GetDesignatedFriendListInfo(callback, []string(userIDList), operationID)
-	blackList := u.friend.GetDesignatedBlackListInfo(callback, []string(userIDList), operationID)
+	friendList := u.friend.GetDesignatedFriendListInfo(callback, userIDList, operationID)
+	blackList := u.friend.GetDesignatedBlackListInfo(callback, userIDList, operationID)
 	notIn := make([]string, 0)
 	for _, v := range userIDList {
 		inFriendList := 0
@@ -47,7 +51,20 @@ func (u *Full) getUsersInfo(callback open_im_sdk_callback.Base, userIDList sdk.G
 	publicList := make([]*api.PublicUserInfo, 0)
 	if len(notIn) > 0 {
 		publicList = u.user.GetUsersInfoFromSvr(callback, notIn, operationID)
+		go func() {
+			for _, v := range publicList {
+				u.userCache.Update(v.UserID, v.FaceURL, v.Nickname)
+				//Update the faceURL and nickname information of the local chat history with non-friends
+				_ = u.user.UpdateMsgSenderFaceURLAndSenderNickname(v.UserID, v.FaceURL, v.Nickname, constant.SingleChatType)
+				conversationID := utils.GetConversationIDBySessionType(v.UserID, constant.SingleChatType)
+				//Update session information of local non-friends
+				_, err := u.user.GetConversation(conversationID)
+				if err == nil {
+					_ = common.TriggerCmdUpdateConversation(common.UpdateConNode{ConID: conversationID, Action: constant.UpdateFaceUrlAndNickName, Args: common.SourceIDAndSessionType{SourceID: v.UserID, SessionType: constant.SingleChatType}}, u.ch)
+					_ = common.TriggerCmdUpdateConversation(common.UpdateConNode{ConID: conversationID, Action: constant.ConChange, Args: []string{conversationID}}, u.ch)
+				}
+			}
+		}()
 	}
-
 	return common.MergeUserResult(publicList, friendList, blackList)
 }

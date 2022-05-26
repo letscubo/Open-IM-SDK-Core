@@ -22,25 +22,27 @@ const (
 	CmdMaxSeq  = "maxSeq"
 	CmdPushMsg = "pushMsg"
 	CmdLogout  = "Logout"
+	CmdWakeUp  = "wakeUp"
 )
 
 const (
 	//ContentType
-	Text           = 101
-	Picture        = 102
-	Voice          = 103
-	Video          = 104
-	File           = 105
-	AtText         = 106
-	Merger         = 107
-	Card           = 108
-	Location       = 109
-	Custom         = 110
-	Revoke         = 111
-	HasReadReceipt = 112
-	Typing         = 113
-	Quote          = 114
-	Face           = 115
+	Text                = 101
+	Picture             = 102
+	Voice               = 103
+	Video               = 104
+	File                = 105
+	AtText              = 106
+	Merger              = 107
+	Card                = 108
+	Location            = 109
+	Custom              = 110
+	Revoke              = 111
+	HasReadReceipt      = 112
+	Typing              = 113
+	Quote               = 114
+	Face                = 115
+	GroupHasReadReceipt = 116
 	//////////////////////////////////////////
 	NotificationBegin       = 1000
 	FriendNotificationBegin = 1200
@@ -54,14 +56,12 @@ const (
 	BlackAddedNotification                = 1207 //add_black
 	BlackDeletedNotification              = 1208 //remove_black
 	FriendNotificationEnd                 = 1299
-	ConversationOptChangeNotification     = 1300
+	ConversationChangeNotification        = 1300
 
 	UserNotificationBegin       = 1301
 	UserInfoUpdatedNotification = 1303 //SetSelfInfoTip             = 204
-	ConversationNotification    = 1307
-	ConversationNotNotification = 1308
-	ConversationDefault         = 0
 	UserNotificationEnd         = 1399
+	OANotification              = 1400
 
 	GroupNotificationBegin = 1500
 
@@ -75,22 +75,41 @@ const (
 	MemberKickedNotification             = 1508
 	MemberInvitedNotification            = 1509
 	MemberEnterNotification              = 1510
+	GroupDismissedNotification           = 1511
+	GroupMemberMutedNotification         = 1512
+	GroupMemberCancelMutedNotification   = 1513
+	GroupMutedNotification               = 1514
+	GroupCancelMutedNotification         = 1515
+	GroupMemberInfoSetNotification       = 1516
 	GroupNotificationEnd                 = 1599
-	NotificationEnd                      = 2000
+
+	SignalingNotificationBegin = 1600
+	SignalingNotification      = 1601
+	SignalingNotificationEnd   = 1699
+
+	ConversationPrivateChatNotification = 1701
+	OrganizationChangedNotification     = 1801
+
+	WorkMomentNotificationBegin = 1900
+	WorkMomentNotification      = 1901
+
+	NotificationEnd = 2000
 
 	////////////////////////////////////////
 
 	//MsgFrom
-	UserMsgType      = 100
-	SysMsgType       = 200
-	ConversationType = 300
+	UserMsgType = 100
+	SysMsgType  = 200
 
 	/////////////////////////////////////
 	//SessionType
-	SingleChatType = 1
-	GroupChatType  = 2
+	SingleChatType       = 1
+	GroupChatType        = 2
+	SuperGroupChatType   = 3
+	NotificationChatType = 4
 
 	//MsgStatus
+	MsgStatusDefault     = 0
 	MsgStatusSending     = 1
 	MsgStatusSendSuccess = 2
 	MsgStatusSendFailed  = 3
@@ -99,12 +118,32 @@ const (
 	MsgStatusFiltered    = 6
 
 	//OptionsKey
-	IsHistory            = "history"
-	IsPersistent         = "persistent"
-	IsUnreadCount        = "unreadCount"
-	IsConversationUpdate = "conversationUpdate"
-	IsOfflinePush        = "offlinePush"
-	IsSenderSync         = "senderSync"
+	IsHistory                  = "history"
+	IsPersistent               = "persistent"
+	IsUnreadCount              = "unreadCount"
+	IsConversationUpdate       = "conversationUpdate"
+	IsOfflinePush              = "offlinePush"
+	IsSenderSync               = "senderSync"
+	IsNotPrivate               = "notPrivate"
+	IsSenderConversationUpdate = "senderConversationUpdate"
+	IsSenderNotificationPush   = "senderNotificationPush"
+
+	//GroupStatus
+	GroupOk              = 0
+	GroupBanChat         = 1
+	GroupStatusDismissed = 2
+	GroupStatusMuted     = 3
+
+	// workMoment permission
+	WorkMomentPublic            = 0
+	WorkMomentPrivate           = 1
+	WorkMomentPermissionCanSee  = 2
+	WorkMomentPermissionCantSee = 3
+
+	// workMoment sdk notification type
+	WorkMomentCommentNotification = 0
+	WorkMomentLikeNotification    = 1
+	WorkMomentAtUserNotification  = 2
 )
 
 const (
@@ -114,6 +153,10 @@ const (
 	ckWsKickOffLine     string = "ws-kick-off-line"
 	ckTokenExpired      string = "token-expired"
 	ckSelfInfoUpdate    string = "self-info-update"
+)
+const (
+	BlackRelationship  = 0
+	FriendRelationship = 1
 )
 
 //const (
@@ -156,9 +199,6 @@ const (
 
 	IsFilter  = 1
 	NotFilter = 0
-
-	Pinned    = 1
-	NotPinned = 0
 )
 
 const (
@@ -173,7 +213,9 @@ const (
 	GroupActionRefuseGroupApplication = 9
 )
 const ZoomScale = "200"
-const MaxTotalMsgLen = 20480
+const MaxTotalMsgLen = 51200
+
+//const MaxTotalMsgLen = 20480
 const (
 	FriendAcceptTip  = "You have successfully become friends, so start chatting"
 	TransferGroupTip = "The owner of the group is transferred!"
@@ -184,17 +226,29 @@ const (
 	WSGetNewestSeq     = 1001
 	WSPullMsgBySeqList = 1002
 	WSSendMsg          = 1003
+	WSSendSignalMsg    = 1004
+	WsDelMsg           = 1005
 	WSPushMsg          = 2001
 	WSKickOnlineMsg    = 2002
 	WsLogoutMsg        = 2003
-	WSDataError        = 3001
+
+	WSDataError = 3001
 )
 
+// conversation
 const (
 	//MsgReceiveOpt
 	ReceiveMessage          = 0
 	NotReceiveMessage       = 1
 	ReceiveNotNotifyMessage = 2
+
+	//pinned
+	Pinned    = 1
+	NotPinned = 0
+
+	//privateChat
+	IsPrivateChat  = true
+	NotPrivateChat = false
 )
 
 const SuccessCallbackDefault = ""
@@ -216,7 +270,30 @@ const (
 	Male   = 1
 	Female = 2
 )
+const (
+	AtAllString = "AtAllTag"
+	AtNormal    = 0
+	AtMe        = 1
+	AtAll       = 2
+	AtAllAtMe   = 3
+)
+const (
+	FieldRecvMsgOpt    = 1
+	FieldIsPinned      = 2
+	FieldAttachedInfo  = 3
+	FieldIsPrivateChat = 4
+	FieldGroupAtType   = 5
+	FieldIsNotInGroup  = 6
+	FieldEx            = 7
+)
+const (
+	KeywordMatchOr  = 0
+	KeywordMatchAnd = 1
+)
 
 const BigVersion = "v2"
 const UpdateVersion = ".0.0"
 const SdkVersion = "Open-IM-SDK-Core-"
+const LogFileName = "sdk"
+
+var HeartbeatInterval = 5
