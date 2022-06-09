@@ -7,29 +7,20 @@
 package ws_local_server
 
 import (
-<<<<<<< HEAD
-	"fmt"
-	"net/http"
-	"open_im_sdk/open_im_sdk"
-	"open_im_sdk/pkg/log"
-
-	"github.com/gorilla/websocket"
-
-	//"open_im_sdk/pkg/log"
-=======
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"open_im_sdk/open_im_sdk"
 	"open_im_sdk/pkg/log"
 	utils2 "open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
->>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
 	"open_im_sdk/ws_wrapper/utils"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 const POINTNUM = 10
@@ -56,19 +47,12 @@ type WServer struct {
 	ch           chan ChanMsg
 }
 
-<<<<<<< HEAD
 func (ws *WServer) OnInit(wsPort int, wsIp string) {
 	ip := wsIp
 	if ip == "" {
 		ip = utils.ServerIP
 	}
 
-	ws.wsAddr = ip + ":" + utils.IntToString(wsPort)
-=======
-func (ws *WServer) OnInit(wsPort int) {
-	//ip := utils.ServerIP
-	ws.wsAddr = ":" + utils.IntToString(wsPort)
->>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
 	ws.wsMaxConnNum = 10000
 	ws.wsConnToUser = make(map[*UserConn]map[string]string)
 	ws.wsUserToConn = make(map[string]map[string]*UserConn)
@@ -363,7 +347,6 @@ func (ws *WServer) headerCheck(w http.ResponseWriter, r *http.Request) bool {
 	}
 }
 
-<<<<<<< HEAD
 func wrapSdkLog(operationID string, v ...interface{}) {
 	//if !log.IsNil() {
 	//	log.NewInfo("", v...)
@@ -376,7 +359,7 @@ func wrapSdkLog(operationID string, v ...interface{}) {
 		log.NewInfo(operationID, "[", b[i+1:], ":", c, "]", v)
 	}
 }
-=======
+
 //
 //func log.Info(operationID string, v ...interface{}) {
 //	if !log.IsNil() {
@@ -389,4 +372,3 @@ func wrapSdkLog(operationID string, v ...interface{}) {
 //		sLog.Println("[OperationID:", operationID, "]", "[", b[i+1:len(b)], ":", c, "]", v)
 //	}
 //}
->>>>>>> a974ea82667b9d6c70ce7ff2122073e4dded5c1d
