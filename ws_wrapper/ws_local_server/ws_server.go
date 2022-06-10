@@ -16,7 +16,6 @@ import (
 	"open_im_sdk/sdk_struct"
 	"open_im_sdk/ws_wrapper/utils"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -47,12 +46,9 @@ type WServer struct {
 	ch           chan ChanMsg
 }
 
-func (ws *WServer) OnInit(wsPort int, wsIp string) {
-	ip := wsIp
-	if ip == "" {
-		ip = utils.ServerIP
-	}
-
+func (ws *WServer) OnInit(wsPort int) {
+	//ip := utils.ServerIP
+	ws.wsAddr = ":" + utils.IntToString(wsPort)
 	ws.wsMaxConnNum = 10000
 	ws.wsConnToUser = make(map[*UserConn]map[string]string)
 	ws.wsUserToConn = make(map[string]map[string]*UserConn)
@@ -63,19 +59,15 @@ func (ws *WServer) OnInit(wsPort int, wsIp string) {
 		ReadBufferSize:   4096,
 		CheckOrigin:      func(r *http.Request) bool { return true },
 	}
-
-	fmt.Println("ws server listening: ", ws.wsAddr)
 }
 
-func (ws *WServer) Run() error {
+func (ws *WServer) Run() {
 	go ws.getMsgAndSend()
 	http.HandleFunc("/", ws.wsHandler)         //Get request from client to handle by wsHandler
 	err := http.ListenAndServe(ws.wsAddr, nil) //Start listening
 	if err != nil {
 		log.Info("", "Ws listening err", "", "err", err.Error())
 	}
-
-	return err
 }
 
 func (ws *WServer) getMsgAndSend() {
@@ -344,19 +336,6 @@ func (ws *WServer) headerCheck(w http.ResponseWriter, r *http.Request) bool {
 		w.Header().Set("Sec-Websocket-Version", "13")
 		http.Error(w, http.StatusText(status), StatusBadRequest)
 		return false
-	}
-}
-
-func wrapSdkLog(operationID string, v ...interface{}) {
-	//if !log.IsNil() {
-	//	log.NewInfo("", v...)
-	//	return
-	//}
-	_, b, c, _ := runtime.Caller(1)
-	i := strings.LastIndex(b, "/")
-	if i != -1 {
-		//sLog.Println("[", b[i+1:len(b)], ":", c, "]", v)
-		log.NewInfo(operationID, "[", b[i+1:], ":", c, "]", v)
 	}
 }
 
