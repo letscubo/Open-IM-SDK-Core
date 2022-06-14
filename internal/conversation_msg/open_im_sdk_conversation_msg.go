@@ -15,7 +15,6 @@ import (
 	"open_im_sdk/sdk_struct"
 	"os"
 	"runtime"
-	"sort"
 	"sync"
 	"time"
 
@@ -486,38 +485,6 @@ func msgStructToLocalChatLog(dst *db.LocalChatLog, src *sdk_struct.MsgStruct) {
 	if src.SessionType == constant.GroupChatType {
 		dst.RecvID = src.GroupID
 	}
-}
-func (c *Conversation) getHistoryMessageItemByCubo(callback open_im_sdk_callback.Base, operationID string, sourceID string, sessionType int, count int, isReverse bool) sdk_struct.NewMsgList {
-	var err error
-	var list []*db.LocalChatLog
-	var messageList sdk_struct.NewMsgList
-	list, err = c.db.GetMessageListNoTime(sourceID, sessionType, count, isReverse)
-	common.CheckDBErrCallback(callback, err, operationID)
-	localChatLogToMsgStruct(&messageList, list)
-	switch sessionType {
-	case constant.SingleChatType, constant.NotificationChatType:
-		for _, v := range messageList {
-			err := c.msgHandleByContentType(v)
-			if err != nil {
-				log.Error(operationID, "Parsing data error:", err.Error(), v)
-				continue
-			}
-		}
-	case constant.GroupChatType:
-		for _, v := range messageList {
-			err := c.msgHandleByContentType(v)
-			if err != nil {
-				log.Error(operationID, "Parsing data error:", err.Error(), v)
-				continue
-			}
-			v.GroupID = v.RecvID
-			v.RecvID = c.loginUserID
-		}
-	}
-	if !isReverse {
-		sort.Sort(messageList)
-	}
-	return messageList
 }
 func localChatLogToMsgStruct(dst *sdk_struct.NewMsgList, src []*db.LocalChatLog) {
 	copier.Copy(dst, &src)

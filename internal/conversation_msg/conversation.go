@@ -328,6 +328,25 @@ func (c *Conversation) SyncOneConversation(conversationID, operationID string) {
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "conversationID: ", conversationID)
 	// todo
 }
+
+func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
+	var lists = make(map[string]sdk_struct.NewMsgList)
+	if req.UserID != "" {
+		uids := strings.Split(req.UserID, ",")
+		for _, value := range uids {
+			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.SingleChatType, req.Count, isReverse)
+		}
+	}
+	if req.GroupID != "" {
+		gids := strings.Split(req.GroupID, ",")
+		for _, value := range gids {
+			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.GroupChatType, req.Count, isReverse)
+		}
+	}
+
+	return sdk.GetHistoryMessageListByCuboCallback(lists)
+}
+
 func (c *Conversation) getHistoryMessageItemByCubo(callback open_im_sdk_callback.Base, operationID string, sourceID string, sessionType int, count int, isReverse bool) sdk_struct.NewMsgList {
 	var err error
 	var list []*db.LocalChatLog
@@ -359,24 +378,6 @@ func (c *Conversation) getHistoryMessageItemByCubo(callback open_im_sdk_callback
 		sort.Sort(messageList)
 	}
 	return messageList
-}
-
-func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
-	var lists = make(map[string]sdk_struct.NewMsgList)
-	if req.UserID != "" {
-		uids := strings.Split(req.UserID, ",")
-		for _, value := range uids {
-			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.SingleChatType, req.Count, isReverse)
-		}
-	}
-	if req.GroupID != "" {
-		gids := strings.Split(req.GroupID, ",")
-		for _, value := range gids {
-			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.GroupChatType, req.Count, isReverse)
-		}
-	}
-
-	return sdk.GetHistoryMessageListByCuboCallback(lists)
 }
 
 func (c *Conversation) getHistoryMessageList(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
