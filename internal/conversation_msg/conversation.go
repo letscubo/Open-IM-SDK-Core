@@ -331,16 +331,73 @@ func (c *Conversation) SyncOneConversation(conversationID, operationID string) {
 
 func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
 	var lists = make(map[string]sdk_struct.NewMsgList)
+	var err error
+	var list []*db.LocalChatLog
 	if req.UserID != "" {
 		uids := strings.Split(req.UserID, ",")
 		for _, value := range uids {
-			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.SingleChatType, req.Count, isReverse)
+			var messageList sdk_struct.NewMsgList
+			list, err = c.db.GetMessageListNoTime(value, constant.SingleChatType, req.Count, isReverse)
+			common.CheckDBErrCallback(callback, err, operationID)
+			localChatLogToMsgStruct(&messageList, list)
+			switch constant.SingleChatType {
+			case constant.SingleChatType, constant.NotificationChatType:
+				for _, v := range messageList {
+					err := c.msgHandleByContentType(v)
+					if err != nil {
+						log.Error(operationID, "Parsing data error:", err.Error(), v)
+						continue
+					}
+				}
+			case constant.GroupChatType:
+				for _, v := range messageList {
+					err := c.msgHandleByContentType(v)
+					if err != nil {
+						log.Error(operationID, "Parsing data error:", err.Error(), v)
+						continue
+					}
+					v.GroupID = v.RecvID
+					v.RecvID = c.loginUserID
+				}
+			}
+			if !isReverse {
+				sort.Sort(messageList)
+			}
+			lists[value] = messageList
 		}
 	}
 	if req.GroupID != "" {
 		gids := strings.Split(req.GroupID, ",")
 		for _, value := range gids {
-			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.GroupChatType, req.Count, isReverse)
+			// lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.GroupChatType, req.Count, isReverse)
+			var messageList sdk_struct.NewMsgList
+			list, err = c.db.GetMessageListNoTime(value, constant.GroupChatType, req.Count, isReverse)
+			common.CheckDBErrCallback(callback, err, operationID)
+			localChatLogToMsgStruct(&messageList, list)
+			switch constant.GroupChatType {
+			case constant.SingleChatType, constant.NotificationChatType:
+				for _, v := range messageList {
+					err := c.msgHandleByContentType(v)
+					if err != nil {
+						log.Error(operationID, "Parsing data error:", err.Error(), v)
+						continue
+					}
+				}
+			case constant.GroupChatType:
+				for _, v := range messageList {
+					err := c.msgHandleByContentType(v)
+					if err != nil {
+						log.Error(operationID, "Parsing data error:", err.Error(), v)
+						continue
+					}
+					v.GroupID = v.RecvID
+					v.RecvID = c.loginUserID
+				}
+			}
+			if !isReverse {
+				sort.Sort(messageList)
+			}
+			lists[value] = messageList
 		}
 	}
 
