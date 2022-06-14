@@ -329,7 +329,7 @@ func (c *Conversation) SyncOneConversation(conversationID, operationID string) {
 	// todo
 }
 
-func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
+func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListByCuboCallback {
 	var lists = make(map[string]sdk_struct.NewMsgList)
 	var err error
 	var list []*db.LocalChatLog
