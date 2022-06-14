@@ -2,8 +2,6 @@ package conversation_msg
 
 import (
 	"errors"
-	"github.com/golang/protobuf/proto"
-	"github.com/jinzhu/copier"
 	_ "open_im_sdk/internal/common"
 	"open_im_sdk/open_im_sdk_callback"
 	"open_im_sdk/pkg/common"
@@ -15,7 +13,11 @@ import (
 	"open_im_sdk/pkg/utils"
 	"open_im_sdk/sdk_struct"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/jinzhu/copier"
 )
 
 func (c *Conversation) getAllConversationList(callback open_im_sdk_callback.Base, operationID string) sdk.GetAllConversationListCallback {
@@ -325,6 +327,56 @@ func (c *Conversation) SyncConversations(operationID string) {
 func (c *Conversation) SyncOneConversation(conversationID, operationID string) {
 	log.NewInfo(operationID, utils.GetSelfFuncName(), "conversationID: ", conversationID)
 	// todo
+}
+func (c *Conversation) getHistoryMessageItemByCubo(callback open_im_sdk_callback.Base, operationID string, sourceID string, sessionType int, count int, isReverse bool) sdk_struct.NewMsgList {
+	var err error
+	var list []*db.LocalChatLog
+	var messageList sdk_struct.NewMsgList
+	list, err = c.db.GetMessageListNoTime(sourceID, sessionType, count, isReverse)
+	common.CheckDBErrCallback(callback, err, operationID)
+	localChatLogToMsgStruct(&messageList, list)
+	switch sessionType {
+	case constant.SingleChatType, constant.NotificationChatType:
+		for _, v := range messageList {
+			err := c.msgHandleByContentType(v)
+			if err != nil {
+				log.Error(operationID, "Parsing data error:", err.Error(), v)
+				continue
+			}
+		}
+	case constant.GroupChatType:
+		for _, v := range messageList {
+			err := c.msgHandleByContentType(v)
+			if err != nil {
+				log.Error(operationID, "Parsing data error:", err.Error(), v)
+				continue
+			}
+			v.GroupID = v.RecvID
+			v.RecvID = c.loginUserID
+		}
+	}
+	if !isReverse {
+		sort.Sort(messageList)
+	}
+	return messageList
+}
+
+func (c *Conversation) getHistoryMessageListByCubo(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {
+	var lists = make(map[string]sdk_struct.NewMsgList)
+	if req.UserID != "" {
+		uids := strings.Split(req.UserID, ",")
+		for _, value := range uids {
+			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.SingleChatType, req.Count, isReverse)
+		}
+	}
+	if req.GroupID != "" {
+		gids := strings.Split(req.GroupID, ",")
+		for _, value := range gids {
+			lists[value] = getHistoryMessageItemByCubo(callback, operationID, value, constant.GroupChatType, req.Count, isReverse)
+		}
+	}
+
+	return sdk.GetHistoryMessageListByCuboCallback(lists)
 }
 
 func (c *Conversation) getHistoryMessageList(callback open_im_sdk_callback.Base, req sdk.GetHistoryMessageListParams, operationID string, isReverse bool) sdk.GetHistoryMessageListCallback {

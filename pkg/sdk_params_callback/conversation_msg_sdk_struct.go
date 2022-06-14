@@ -42,6 +42,8 @@ type GetHistoryMessageListParams struct {
 }
 type GetHistoryMessageListCallback []*sdk_struct.MsgStruct
 
+type GetHistoryMessageListByCuboCallback map[string]sdk_struct.MsgStruct
+
 type RevokeMessageParams sdk_struct.MsgStruct
 
 const RevokeMessageCallback = constant.SuccessCallbackDefault
